@@ -1,0 +1,282 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum Rol {
+  COMPRADOR
+  ADMIN
+  DELIVERY
+  FRUVER_OWNER
+  PROVEEDOR
+}
+
+enum EstadoPedido {
+  PENDIENTE_PAGO
+  PAGADO
+  PREPARANDO
+  LISTO_PARA_RECOGER
+  EN_CAMINO
+  ENTREGADO
+  CANCELADO
+}
+
+enum TipoDelivery {
+  RED_SMF
+  PICAP
+  PICKUP_TIENDA
+}
+
+enum OrigenDelivery {
+  SMF_INDEPENDIENTE
+  VINCULADO_FRUVER
+}
+
+enum CanalNotificacion {
+  WHATSAPP
+  EMAIL
+  PUSH
+}
+
+enum TipoNotificacion {
+  PEDIDO_NUEVO
+  PEDIDO_CONFIRMADO
+  PEDIDO_PREPARANDO
+  PEDIDO_LISTO
+  EN_CAMINO
+  ENTREGADO
+  CANCELADO
+  BIENVENIDA
+  RECORDATORIO_INVENTARIO
+}
+
+enum CategoriaProducto {
+  FRUTAS
+  VERDURAS_HORTALIZAS
+  FRUTOS_SECOS_SEMILLAS
+  CEREALES
+  LACTEOS
+  PROTEINAS
+  BEBIDAS
+  OTROS
+}
+
+enum UnidadMedida {
+  UNIDAD
+  GRAMO
+  KILOGRAMO
+  LIBRA
+  LITRO
+  MILILITRO
+  MANOJO
+  BOLSA
+}
+
+model User {
+  id            String    @id @default(uuid())
+  nombre        String
+  email         String    @unique
+  telefono      String?
+  passwordHash  String
+  rol           Rol       @default(COMPRADOR)
+  direccion     String?
+  lat           Float?
+  lng           Float?
+  activo        Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  tiendas           Tienda[]          @relation("TiendaOwner")
+  pedidosComprador  Pedido[]          @relation("PedidoComprador")
+  pedidosDelivery   Pedido[]          @relation("PedidoDelivery")
+  planNutricional   PlanNutricional[]
+  notificaciones    Notificacion[]
+  deliveryPerfil    DeliveryPerfil?
+
+  @@map("users")
+}
+
+model DeliveryPerfil {
+  id           String         @id @default(uuid())
+  userId       String         @unique
+  origen       OrigenDelivery @default(SMF_INDEPENDIENTE)
+  tiendaId     String?
+  latActual    Float?
+  lngActual    Float?
+  activoAhora  Boolean        @default(false)
+  zonas        String?
+  calificacion Float?         @default(5.0)
+  createdAt    DateTime       @default(now())
+
+  user   User    @relation(fields: [userId], references: [id])
+  tienda Tienda? @relation(fields: [tiendaId], references: [id])
+
+  @@map("delivery_perfiles")
+}
+
+model Tienda {
+  id                String   @id @default(uuid())
+  ownerId           String
+  nombre            String
+  descripcion       String?
+  direccion         String
+  lat               Float
+  lng               Float
+  zona              String
+  imagenUrl         String?
+  logoUrl           String?
+  comisionPct       Float    @default(8.0)
+  radioEntregaKm    Float    @default(3.0)
+  costodomicilio    Float    @default(5000)
+  tiempoEstimadoMin Int      @default(45)
+  aceptaPickup      Boolean  @default(true)
+  activa            Boolean  @default(true)
+  whatsapp          String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  owner          User               @relation("TiendaOwner", fields: [ownerId], references: [id])
+  inventario     InventarioTienda[]
+  pedidos        Pedido[]
+  deliveriesLink DeliveryPerfil[]
+
+  @@map("tiendas")
+}
+
+model ProductoCatalogo {
+  id          String            @id @default(uuid())
+  nombre      String
+  nombreComun String?
+  categoria   CategoriaProducto
+  unidad      UnidadMedida      @default(UNIDAD)
+  descripcion String?
+  imagenUrl   String?
+  activo      Boolean           @default(true)
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  inventarios    InventarioTienda[]
+  preciosMercado PrecioMercado[]
+  pedidoItems    PedidoItem[]
+
+  @@map("productos_catalogo")
+}
+
+model PrecioMercado {
+  id             String   @id @default(uuid())
+  productoId     String
+  precioMin      Float
+  precioMax      Float
+  precioSugerido Float
+  fuente         String
+  fecha          DateTime @default(now())
+
+  producto ProductoCatalogo @relation(fields: [productoId], references: [id])
+
+  @@map("precios_mercado")
+}
+
+model InventarioTienda {
+  id          String   @id @default(uuid())
+  tiendaId    String
+  productoId  String
+  disponible  Boolean  @default(false)
+  precioVenta Float
+  stockAprox  Int?
+  updatedAt   DateTime @updatedAt
+
+  tienda   Tienda           @relation(fields: [tiendaId], references: [id])
+  producto ProductoCatalogo @relation(fields: [productoId], references: [id])
+
+  @@unique([tiendaId, productoId])
+  @@map("inventario_tienda")
+}
+
+model Pedido {
+  id               String       @id @default(uuid())
+  compradorId      String
+  tiendaId         String
+  deliveryId       String?
+  estado           EstadoPedido @default(PENDIENTE_PAGO)
+  tipoDelivery     TipoDelivery @default(RED_SMF)
+  direccionEntrega String?
+  latEntrega       Float?
+  lngEntrega       Float?
+  subtotal         Float
+  costoDelivery    Float        @default(0)
+  total            Float
+  comisionSmf      Float
+  pagoTienda       Float
+  pagoDelivery     Float        @default(0)
+  wompiRef         String?
+  picapRef         String?
+  codigoPickup     String?
+  createdAt        DateTime     @default(now())
+  pagadoAt         DateTime?
+  preparadoAt      DateTime?
+  enCaminoAt       DateTime?
+  entregadoAt      DateTime?
+
+  comprador      User           @relation("PedidoComprador", fields: [compradorId], references: [id])
+  tienda         Tienda         @relation(fields: [tiendaId], references: [id])
+  delivery       User?          @relation("PedidoDelivery", fields: [deliveryId], references: [id])
+  items          PedidoItem[]
+  notificaciones Notificacion[]
+
+  @@map("pedidos")
+}
+
+model PedidoItem {
+  id             String @id @default(uuid())
+  pedidoId       String
+  productoId     String
+  cantidad       Int
+  precioUnitario Float
+  subtotal       Float
+
+  pedido   Pedido           @relation(fields: [pedidoId], references: [id])
+  producto ProductoCatalogo @relation(fields: [productoId], references: [id])
+
+  @@map("pedido_items")
+}
+
+model PlanNutricional {
+  id              String   @id @default(uuid())
+  userId          String
+  peso            Float
+  estatura        Float
+  sexo            String
+  fechaNacimiento DateTime
+  actividad       String
+  objetivo        String?
+  imc             Float
+  tmb             Float
+  getd            Float
+  planGemini      Json
+  createdAt       DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@map("planes_nutricionales")
+}
+
+model Notificacion {
+  id        String            @id @default(uuid())
+  userId    String
+  pedidoId  String?
+  canal     CanalNotificacion
+  tipo      TipoNotificacion
+  mensaje   String            @db.Text
+  enviado   Boolean           @default(false)
+  sentAt    DateTime?
+  createdAt DateTime          @default(now())
+
+  user   User    @relation(fields: [userId], references: [id])
+  pedido Pedido? @relation(fields: [pedidoId], references: [id])
+
+  @@map("notificaciones")
+}

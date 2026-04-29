@@ -1,0 +1,29 @@
+import express from 'express'
+import cors from 'cors'
+import helmet from 'helmet'
+import dotenv from 'dotenv'
+
+dotenv.config()
+
+const app = express()
+const PORT = process.env.PORT || 3000
+
+app.use(helmet())
+app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:5173', credentials: true }))
+app.use(express.json())
+app.use(express.urlencoded({ extended: true }))
+
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', proyecto: 'SuperMarket Fit', version: '1.0.0', timestamp: new Date().toISOString() })
+})
+
+app.use((err, req, res, next) => {
+  console.error(err.stack)
+  res.status(err.status || 500).json({ ok: false, mensaje: err.message || 'Error interno del servidor' })
+})
+
+app.listen(PORT, () => {
+  console.log('SuperMarket Fit corriendo en http://localhost:' + PORT)
+})
+
+export default app
