@@ -6,6 +6,7 @@ import authRoutes from './routes/auth.routes.js'
 import tiendaRoutes from './routes/tienda.routes.js'
 import productoRoutes from './routes/producto.routes.js'
 import inventarioRoutes from './routes/inventario.routes.js'
+import pedidoRoutes from './routes/pedido.routes.js'
 
 dotenv.config()
 
@@ -21,6 +22,7 @@ app.use('/api/auth', authRoutes)
 app.use('/api/tiendas', tiendaRoutes)
 app.use('/api/productos', productoRoutes)
 app.use('/api/inventario', inventarioRoutes)
+app.use('/api/pedidos', pedidoRoutes)
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', proyecto: 'SuperMarket Fit', version: '1.0.0', timestamp: new Date().toISOString() })
