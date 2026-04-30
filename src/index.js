@@ -4,6 +4,7 @@ import helmet from 'helmet'
 import dotenv from 'dotenv'
 import authRoutes from './routes/auth.routes.js'
 import tiendaRoutes from './routes/tienda.routes.js'
+import productoRoutes from './routes/producto.routes.js'
 
 dotenv.config()
 
@@ -17,6 +18,7 @@ app.use(express.urlencoded({ extended: true }))
 
 app.use('/api/auth', authRoutes)
 app.use('/api/tiendas', tiendaRoutes)
+app.use('/api/productos', productoRoutes)
 
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', proyecto: 'SuperMarket Fit', version: '1.0.0', timestamp: new Date().toISOString() })
