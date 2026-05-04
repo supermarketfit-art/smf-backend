@@ -1,136 +1,53 @@
-import twilio from 'twilio'
 import dotenv from 'dotenv'
-
 dotenv.config()
 
-const client = twilio(
-  process.env.TWILIO_ACCOUNT_SID,
-  process.env.TWILIO_AUTH_TOKEN
-)
+const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN
+const PHONE_ID = process.env.WHATSAPP_PHONE_ID
+const API_URL = 'https://graph.facebook.com/v19.0/' + PHONE_ID + '/messages'
 
-const FROM = process.env.TWILIO_WHATSAPP_FROM
-
-// Función base para enviar mensajes
 const enviarMensaje = async (para, mensaje) => {
   try {
-    const message = await client.messages.create({
-      from: FROM,
-      to: `whatsapp:${para}`,
-      body: mensaje
+    const response = await fetch(API_URL, {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + WHATSAPP_TOKEN,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        to: para,
+        type: 'text',
+        text: { body: mensaje }
+      })
     })
-    console.log(`✅ WhatsApp enviado a ${para} — SID: ${message.sid}`)
-    return { ok: true, sid: message.sid }
+    const data = await response.json()
+    if (!response.ok) throw new Error(JSON.stringify(data.error))
+    console.log('WhatsApp enviado a ' + para)
+    return { ok: true, data }
   } catch (error) {
-    console.error(`❌ Error enviando WhatsApp a ${para}:`, error.message)
+    console.error('Error WhatsApp:', error.message)
     return { ok: false, error: error.message }
   }
 }
 
-// Notificaciones por evento del pedido
-export const notificarPedidoNuevo = async (telefono, pedido, tienda) => {
-  const mensaje = `🛒 *SuperMarket Fit*
-  
-¡Hola! Tu pedido ha sido recibido.
-
-📦 *Pedido #${pedido.id.substring(0, 8).toUpperCase()}*
-🏪 Tienda: ${tienda.nombre}
-💰 Total: $${pedido.total.toLocaleString('es-CO')}
-🚴 Tipo entrega: ${pedido.tipoDelivery === 'RED_SMF' ? 'Domicilio SMF' : 'Recoger en tienda'}
-
-Estado: *Pendiente de pago* ⏳
-
-_SuperMarket Fit — Come bien, vive mejor_ 🥦`
-
-  return enviarMensaje(telefono, mensaje)
+export const notificarBienvenida = async (telefono, nombre) => {
+  return enviarMensaje(telefono, 'Bienvenido a SuperMarket Fit ' + nombre + '! Tu tienda de frutas y verduras. Come bien, vive mejor.')
 }
 
 export const notificarPedidoConfirmado = async (telefono, pedido) => {
-  const mensaje = `✅ *SuperMarket Fit*
-
-¡Pago confirmado! Tu pedido está en preparación.
-
-📦 *Pedido #${pedido.id.substring(0, 8).toUpperCase()}*
-💰 Total pagado: $${pedido.total.toLocaleString('es-CO')}
-
-Te avisaremos cuando esté listo para envío. 🚴
-
-_SuperMarket Fit — Come bien, vive mejor_ 🥦`
-
-  return enviarMensaje(telefono, mensaje)
+  return enviarMensaje(telefono, 'SMF: Pago confirmado! Pedido #' + pedido.id.substring(0,8).toUpperCase() + ' en preparacion. Total: $' + pedido.total.toLocaleString('es-CO'))
 }
 
-export const notificarPedidoEnCamino = async (telefono, pedido, delivery) => {
-  const mensaje = `🚴 *SuperMarket Fit*
-
-¡Tu pedido está en camino!
-
-📦 *Pedido #${pedido.id.substring(0, 8).toUpperCase()}*
-👤 Mensajero: ${delivery.nombre}
-📍 Dirección entrega: ${pedido.direccionEntrega}
-
-Tiempo estimado: 20-35 minutos ⏱
-
-_SuperMarket Fit — Come bien, vive mejor_ 🥦`
-
-  return enviarMensaje(telefono, mensaje)
+export const notificarPedidoEnCamino = async (telefono, pedido) => {
+  return enviarMensaje(telefono, 'SMF: Tu pedido #' + pedido.id.substring(0,8).toUpperCase() + ' esta en camino! Tiempo estimado: 20-35 minutos.')
 }
 
 export const notificarPedidoEntregado = async (telefono, pedido) => {
-  const mensaje = `🎉 *SuperMarket Fit*
-
-¡Tu pedido fue entregado!
-
-📦 *Pedido #${pedido.id.substring(0, 8).toUpperCase()}*
-
-¿Cómo fue tu experiencia? Tu opinión nos ayuda a mejorar.
-
-Gracias por confiar en SMF 🥦
-_Come bien, vive mejor_`
-
-  return enviarMensaje(telefono, mensaje)
+  return enviarMensaje(telefono, 'SMF: Tu pedido #' + pedido.id.substring(0,8).toUpperCase() + ' fue entregado! Gracias por confiar en nosotros.')
 }
 
-export const notificarFruverPedidoNuevo = async (telefono, pedido, items) => {
-  const listaItems = items.map(i =>
-    `• ${i.producto.nombre} x${i.cantidad} — $${i.subtotal.toLocaleString('es-CO')}`
-  ).join('\n')
-
-  const mensaje = `🔔 *SuperMarket Fit — Nuevo Pedido*
-
-📦 *Pedido #${pedido.id.substring(0, 8).toUpperCase()}*
-
-*Productos:*
-${listaItems}
-
-💰 Subtotal: $${pedido.subtotal.toLocaleString('es-CO')}
-🚴 Entrega: ${pedido.tipoDelivery === 'RED_SMF' ? 'Domicilio SMF' : 'Pickup'}
-📍 Dirección: ${pedido.direccionEntrega || 'Recoger en tienda'}
-
-Por favor prepara el pedido lo antes posible. ✅`
-
-  return enviarMensaje(telefono, mensaje)
+export const notificarFruverPedidoNuevo = async (telefono, pedido) => {
+  return enviarMensaje(telefono, 'SMF - Nuevo pedido #' + pedido.id.substring(0,8).toUpperCase() + '. Subtotal: $' + pedido.subtotal.toLocaleString('es-CO') + '. Por favor prepara el pedido.')
 }
 
-export const notificarBienvenida = async (telefono, nombre) => {
-  const mensaje = `👋 *¡Bienvenido a SuperMarket Fit, ${nombre}!*
-
-Somos tu tienda de frutas y verduras frescas con entrega a domicilio y asesoría nutricional personalizada. 🥦🍎
-
-*¿Qué puedes hacer?*
-🛒 Comprar productos frescos de tu fruver más cercano
-🥗 Recibir tu plan nutricional personalizado con IA
-🚴 Recibir todo en la puerta de tu casa
-
-_Come bien, vive mejor_ ✨`
-
-  return enviarMensaje(telefono, mensaje)
-}
-
-export default { 
-  notificarPedidoNuevo,
-  notificarPedidoConfirmado,
-  notificarPedidoEnCamino,
-  notificarPedidoEntregado,
-  notificarFruverPedidoNuevo,
-  notificarBienvenida
-}
+export default { notificarBienvenida, notificarPedidoConfirmado, notificarPedidoEnCamino, notificarPedidoEntregado, notificarFruverPedidoNuevo }
