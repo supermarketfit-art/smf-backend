@@ -47,7 +47,7 @@ export const notificarPedidoEntregado = async (telefono, pedido) => {
 }
 
 export const notificarFruverPedidoNuevo = async (telefono, pedido) => {
-  return enviarMensaje(telefono, 'SMF - Nuevo pedido #' + pedido.id.substring(0,8).toUpperCase() + '. Subtotal: $' + pedido.subtotal.toLocaleString('es-CO') + '. Por favor prepara el pedido.')
+  return enviarMensaje(telefono, 'SMF - Nuevo pedido #' + pedido.id.substring(0,8).toUpperCase() + '. Total: $' + pedido.total.toLocaleString('es-CO') + '. Por favor prepara el pedido.')
 }
 
 export default { notificarBienvenida, notificarPedidoConfirmado, notificarPedidoEnCamino, notificarPedidoEntregado, notificarFruverPedidoNuevo }
