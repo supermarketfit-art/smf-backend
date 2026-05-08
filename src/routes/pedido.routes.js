@@ -1,11 +1,12 @@
 import express from 'express'
 import { PrismaClient } from '@prisma/client'
-import { verificarToken, soloAdmin, soloFruver, soloDelivery } from '../middleware/auth.middleware.js'
+import { verificarToken, soloFruver } from '../middleware/auth.middleware.js'
+import { notificarFruverPedidoNuevo, notificarPedidoConfirmado } from '../services/whatsapp.service.js'
+import { emailPedidoConfirmado } from '../services/email.service.js'
 
 const router = express.Router()
 const prisma = new PrismaClient()
 
-// Calcular split financiero
 const calcularSplit = (subtotal, costoDelivery, comisionPct) => {
   const comisionSmf = subtotal * (comisionPct / 100)
   const pagoTienda = subtotal - comisionSmf
@@ -22,12 +23,14 @@ router.post('/', verificarToken, async (req, res) => {
       return res.status(400).json({ ok: false, mensaje: 'tiendaId e items son requeridos' })
     }
 
-    const tienda = await prisma.tienda.findUnique({ where: { id: tiendaId } })
+    const tienda = await prisma.tienda.findUnique({
+      where: { id: tiendaId },
+      include: { owner: { select: { nombre: true, telefono: true, email: true } } }
+    })
     if (!tienda || !tienda.activa) {
       return res.status(404).json({ ok: false, mensaje: 'Tienda no encontrada o inactiva' })
     }
 
-    // Verificar productos y calcular subtotal
     let subtotal = 0
     const itemsValidados = []
 
@@ -38,15 +41,11 @@ router.post('/', verificarToken, async (req, res) => {
       })
 
       if (!inventario || !inventario.disponible) {
-        return res.status(400).json({
-          ok: false,
-          mensaje: `Producto no disponible en esta tienda`
-        })
+        return res.status(400).json({ ok: false, mensaje: 'Producto no disponible en esta tienda' })
       }
 
       const itemSubtotal = inventario.precioVenta * item.cantidad
       subtotal += itemSubtotal
-
       itemsValidados.push({
         productoId: item.productoId,
         cantidad: item.cantidad,
@@ -57,13 +56,10 @@ router.post('/', verificarToken, async (req, res) => {
 
     const costoDelivery = tipoDelivery === 'PICKUP_TIENDA' ? 0 : tienda.costodomicilio
     const { comisionSmf, pagoTienda, pagoDelivery, total } = calcularSplit(subtotal, costoDelivery, tienda.comisionPct)
-
-    // Generar código pickup si aplica
     const codigoPickup = tipoDelivery === 'PICKUP_TIENDA'
       ? Math.random().toString(36).substring(2, 8).toUpperCase()
       : null
 
-    // Crear pedido con items
     const pedido = await prisma.pedido.create({
       data: {
         compradorId: req.user.id,
@@ -79,21 +75,41 @@ router.post('/', verificarToken, async (req, res) => {
         pagoTienda,
         pagoDelivery,
         codigoPickup,
-        items: {
-          create: itemsValidados
-        }
+        estado: 'PAGADO',
+        pagadoAt: new Date(),
+        items: { create: itemsValidados }
       },
       include: {
-        items: {
-          include: { producto: { select: { nombre: true, unidad: true } } }
-        },
-        tienda: { select: { nombre: true, direccion: true, whatsapp: true } }
+        items: { include: { producto: { select: { nombre: true, unidad: true } } } },
+        tienda: { select: { nombre: true, direccion: true, whatsapp: true } },
+        comprador: { select: { nombre: true, telefono: true, email: true } }
       }
     })
 
+    // Notificar al fruver por WhatsApp
+    if (tienda.whatsapp) {
+      notificarFruverPedidoNuevo(tienda.whatsapp, pedido).catch(e =>
+        console.error('Error notificando fruver WhatsApp:', e)
+      )
+    }
+
+    // Notificar al comprador por WhatsApp
+    if (pedido.comprador.telefono) {
+      notificarPedidoConfirmado(pedido.comprador.telefono, pedido).catch(e =>
+        console.error('Error notificando comprador WhatsApp:', e)
+      )
+    }
+
+    // Notificar al comprador por email
+    if (pedido.comprador.email) {
+      emailPedidoConfirmado(pedido.comprador.email, pedido.comprador.nombre, pedido).catch(e =>
+        console.error('Error notificando comprador email:', e)
+      )
+    }
+
     res.status(201).json({
       ok: true,
-      mensaje: '¡Pedido creado! Procede al pago para confirmarlo.',
+      mensaje: '¡Pedido creado y confirmado!',
       pedido
     })
   } catch (error) {
@@ -102,7 +118,7 @@ router.post('/', verificarToken, async (req, res) => {
   }
 })
 
-// GET /api/pedidos/mis-pedidos - pedidos del comprador
+// GET /api/pedidos/mis-pedidos
 router.get('/mis-pedidos', verificarToken, async (req, res) => {
   try {
     const pedidos = await prisma.pedido.findMany({
@@ -113,14 +129,13 @@ router.get('/mis-pedidos', verificarToken, async (req, res) => {
       },
       orderBy: { createdAt: 'desc' }
     })
-
     res.json({ ok: true, total: pedidos.length, pedidos })
   } catch (error) {
     res.status(500).json({ ok: false, mensaje: 'Error al obtener pedidos' })
   }
 })
 
-// GET /api/pedidos/tienda/:tiendaId - pedidos de un fruver
+// GET /api/pedidos/tienda/:tiendaId
 router.get('/tienda/:tiendaId', verificarToken, soloFruver, async (req, res) => {
   try {
     const pedidos = await prisma.pedido.findMany({
@@ -134,14 +149,13 @@ router.get('/tienda/:tiendaId', verificarToken, soloFruver, async (req, res) => 
       },
       orderBy: { createdAt: 'desc' }
     })
-
     res.json({ ok: true, total: pedidos.length, pedidos })
   } catch (error) {
     res.status(500).json({ ok: false, mensaje: 'Error al obtener pedidos' })
   }
 })
 
-// GET /api/pedidos/:id - detalle de un pedido
+// GET /api/pedidos/:id
 router.get('/:id', verificarToken, async (req, res) => {
   try {
     const pedido = await prisma.pedido.findUnique({
@@ -153,29 +167,31 @@ router.get('/:id', verificarToken, async (req, res) => {
         delivery: { select: { nombre: true, telefono: true } }
       }
     })
-
     if (!pedido) {
       return res.status(404).json({ ok: false, mensaje: 'Pedido no encontrado' })
     }
-
     res.json({ ok: true, pedido })
   } catch (error) {
     res.status(500).json({ ok: false, mensaje: 'Error al obtener el pedido' })
   }
 })
 
-// PATCH /api/pedidos/:id/estado - actualizar estado del pedido
+// PATCH /api/pedidos/:id/estado
 router.patch('/:id/estado', verificarToken, async (req, res) => {
   try {
     const { estado } = req.body
     const { id } = req.params
 
-    const pedido = await prisma.pedido.findUnique({ where: { id } })
+    const pedido = await prisma.pedido.findUnique({
+      where: { id },
+      include: {
+        comprador: { select: { nombre: true, telefono: true, email: true } }
+      }
+    })
     if (!pedido) {
       return res.status(404).json({ ok: false, mensaje: 'Pedido no encontrado' })
     }
 
-    // Campos de timestamp según estado
     const timestampMap = {
       PAGADO: { pagadoAt: new Date() },
       PREPARANDO: { preparadoAt: new Date() },
@@ -185,17 +201,15 @@ router.patch('/:id/estado', verificarToken, async (req, res) => {
 
     const actualizado = await prisma.pedido.update({
       where: { id },
-      data: {
-        estado,
-        ...timestampMap[estado]
-      }
+      data: { estado, ...timestampMap[estado] }
     })
 
-    res.json({
-      ok: true,
-      mensaje: `Pedido actualizado a: ${estado}`,
-      pedido: actualizado
-    })
+    // Notificar al comprador cuando el pedido está en camino o entregado
+    if (estado === 'EN_CAMINO' && pedido.comprador.telefono) {
+      notificarPedidoConfirmado(pedido.comprador.telefono, pedido).catch(console.error)
+    }
+
+    res.json({ ok: true, mensaje: 'Pedido actualizado a: ' + estado, pedido: actualizado })
   } catch (error) {
     res.status(500).json({ ok: false, mensaje: 'Error al actualizar el pedido' })
   }
