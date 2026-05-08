@@ -35,6 +35,13 @@ app.use('/api/pedidos', pedidoRoutes)
 app.use('/api/notificaciones', notificacionRoutes)
 app.use('/api/pagos', pagoRoutes)
 
+// Ruta temporal para generar hash - ELIMINAR DESPUÉS
+app.get('/temp/hash/:password', async (req, res) => {
+  const bcrypt = await import('bcryptjs')
+  const hash = await bcrypt.default.hash(req.params.password, 12)
+  res.json({ hash })
+})
+
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', proyecto: 'SuperMarket Fit', version: '1.0.0', timestamp: new Date().toISOString() })
 })
