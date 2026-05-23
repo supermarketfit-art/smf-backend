@@ -10,7 +10,6 @@ import pedidoRoutes from './routes/pedido.routes.js'
 import notificacionRoutes from './routes/notificacion.routes.js'
 import pagoRoutes from './routes/pago.routes.js'
 import nutricionRoutes from './routes/nutricion.routes.js'
-import nutricionRoutes from './routes/nutricion.routes.js'
 
 dotenv.config()
 
