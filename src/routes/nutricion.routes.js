@@ -1,13 +1,13 @@
 import express from 'express'
 import { PrismaClient } from '@prisma/client'
-import { verifyToken } from '../middleware/auth.middleware.js'
+import { verificarToken } from '../middleware/auth.middleware.js'
 import { generarPlanNutricional, calcularMetricas } from '../agents/nutricion.agent.js'
 
 const router = express.Router()
 const prisma = new PrismaClient()
 
 // POST /api/nutricion/plan — genera y guarda un plan nutricional
-router.post('/plan', verifyToken, async (req, res) => {
+router.post('/plan', verificarToken, async (req, res) => {
   try {
     const { peso, estatura, edad, sexo, actividad, objetivo } = req.body
 
@@ -55,7 +55,7 @@ router.post('/plan', verifyToken, async (req, res) => {
 })
 
 // GET /api/nutricion/mi-plan — trae el último plan del usuario
-router.get('/mi-plan', verifyToken, async (req, res) => {
+router.get('/mi-plan', verificarToken, async (req, res) => {
   try {
     const plan = await prisma.planNutricional.findFirst({
       where:   { userId: req.user.id },
